@@ -1,69 +1,89 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-import re  # Wir brauchen "re" für Regular Expressions (Mustererkennung)
+import re
 
-# 1. Funktion, um die URL aus dem YAZIO-Text zu extrahieren
+# 1. URL Extraktion (wie besprochen)
 def extract_url(text):
-    if not text:
-        return ""
-    # Sucht nach allem, was mit http oder https beginnt
     urls = re.findall(r'(https?://\S+)', text)
     return urls[0] if urls else text
 
-# 2. Link aus der Browser-Zeile holen (von HTTP Shortcuts)
-query_params = st.query_params
-raw_input = query_params.get("url", "")
-
-# 3. Den Text filtern: Nur die URL behalten
-clean_url = extract_url(raw_input)
-
-# 4. Das Eingabefeld mit der sauberen URL füllen
-url = st.text_input("YAZIO Rezept-Link:", value=clean_url)
-
-if url:
+# 2. Den richtigen Inhalt finden
+def scrape_yazio(url):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
     try:
-        # Daten von YAZIO holen
-        response = requests.get(url)
+        response = requests.get(url, headers=headers, allow_redirects=True)
+        # Falls es ein App-Link ist, nehmen wir die finale URL nach den Umleitungen
+        final_url = response.url
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Extraktion (Beispielhafte Selektoren, müssen ggf. angepasst werden)
-        title = soup.find('h1').text
-        ingredients = [li.text for li in soup.find_all('div', class_='rezept-zutat')]
-        steps = [step.text for step in soup.find_all('div', class_='rezept-zubereitung-schritt')]
+        # Titel finden
+        title = soup.find('h1').get_text(strip=True) if soup.find('h1') else "Rezept"
+        
+        # Zutaten finden (YAZIO nutzt oft spezifische Klassen oder Data-Attribute)
+        # Wir suchen nach Texten in Containern, die typischerweise Zutaten enthalten
+        ingredients = []
+        ing_elements = soup.select('div[class*="ingredient"], li[class*="ingredient"], .recipe-ingredients-list-item')
+        for el in ing_elements:
+            ingredients.append(el.get_text(strip=True))
+            
+        # Schritte finden
+        steps = []
+        step_elements = soup.select('div[class*="instruction"], .recipe-steps-list-item, div[class*="step"]')
+        for el in step_elements:
+            text = el.get_text(strip=True)
+            if text and len(text) > 5: # Ignoriere kurze Zahlen oder Fragmente
+                steps.append(text)
+        
+        return title, ingredients, steps
+    except Exception as e:
+        return f"Fehler: {e}", [], []
 
+# --- UI LOGIK ---
+query_params = st.query_params
+raw_input = query_params.get("url", "")
+clean_url = extract_url(raw_input)
+
+url = st.text_input("YAZIO Link:", value=clean_url)
+
+if url:
+    with st.spinner('Rezept wird analysiert...'):
+        title, ingredients, steps = scrape_yazio(url)
+    
+    if ingredients:
         st.header(title)
         
-        # Sidebar für Zutaten (immer sichtbar)
+        # Sidebar für Zutaten (Immer sichtbar)
         with st.sidebar:
             st.header("🛒 Zutaten")
             for ing in ingredients:
-                st.write(f"- {ing}")
-
-        # Story-Modus (Step-by-Step)
+                st.write(f"✅ {ing}")
+        
+        # Story-Modus für Schritte
         if steps:
-            if 'step_index' not in st.session_state:
-                st.session_state.step_index = 0
-
-            step_count = len(steps)
-            current_step = st.session_state.step_index
+            if 'step' not in st.session_state:
+                st.session_state.step = 0
             
-            # Progress Bar wie bei Stories
-            progress = (current_step + 1) / step_count
-            st.progress(progress)
+            curr = st.session_state.step
             
-            st.subheader(f"Schritt {current_step + 1} von {step_count}")
-            st.info(steps[current_step])
-
+            # Progress-Balken
+            st.progress((curr + 1) / len(steps))
+            
+            # Große Anzeige für den aktuellen Schritt
+            st.subheader(f"Schritt {curr + 1} von {len(steps)}")
+            st.markdown(f"### {steps[curr]}")
+            
+            # Riesige Buttons für nasse Finger
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("⬅️ Zurück") and current_step > 0:
-                    st.session_state.step_index -= 1
+                if st.button("⬅️ ZURÜCK", use_container_width=True) and curr > 0:
+                    st.session_state.step -= 1
                     st.rerun()
             with col2:
-                if st.button("Weiter ➡️") and current_step < step_count - 1:
-                    st.session_state.step_index += 1
+                if st.button("WEITER ➡️", use_container_width=True) and curr < len(steps) - 1:
+                    st.session_state.step += 1
                     st.rerun()
-        
-    except Exception as e:
-        st.error("Rezept konnte nicht geladen werden. Prüfe den Link!")
+    else:
+        st.warning("Keine Zutaten gefunden. Möglicherweise ist das Rezept hinter einem Login geschützt oder die URL wird blockiert.")
