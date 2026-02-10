@@ -8,10 +8,19 @@ st.components.v1.html(
     height=0,
 )
 
+#import streamlit as st
+
+# Extrahiere den Link aus der URL (z.B. ...app/?url=https://yazio...)
+url_params = st.query_params
+received_url = url_params.get("url", "")
+
+# Falls ein Link empfangen wurde, setze ihn als Standardwert
+url = st.text_input("YAZIO Rezept-Link:", value=received_url)
+
 st.title("👨‍🍳 Mein Koch-Modus")
 
 # Link Input (wird über die "Teilen"-Funktion übergeben)
-url = st.text_input("YAZIO Rezept-Link hier einfügen:", placeholder="https://www.yazio.com/de/rezepte/...")
+#url = st.text_input("YAZIO Rezept-Link hier einfügen:", placeholder="https://www.yazio.com/de/rezepte/...")
 
 if url:
     try:
