@@ -1,26 +1,25 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
+import re  # Wir brauchen "re" für Regular Expressions (Mustererkennung)
 
-# Verhindert, dass das Display ausgeht (simuliert durch JavaScript)
-st.components.v1.html(
-    "<script>navigator.wakeLock.request('screen');</script>",
-    height=0,
-)
+# 1. Funktion, um die URL aus dem YAZIO-Text zu extrahieren
+def extract_url(text):
+    if not text:
+        return ""
+    # Sucht nach allem, was mit http oder https beginnt
+    urls = re.findall(r'(https?://\S+)', text)
+    return urls[0] if urls else text
 
-#import streamlit as st
+# 2. Link aus der Browser-Zeile holen (von HTTP Shortcuts)
+query_params = st.query_params
+raw_input = query_params.get("url", "")
 
-# Extrahiere den Link aus der URL (z.B. ...app/?url=https://yazio...)
-url_params = st.query_params
-received_url = url_params.get("url", "")
+# 3. Den Text filtern: Nur die URL behalten
+clean_url = extract_url(raw_input)
 
-# Falls ein Link empfangen wurde, setze ihn als Standardwert
-url = st.text_input("YAZIO Rezept-Link:", value=received_url)
-
-st.title("👨‍🍳 Mein Koch-Modus")
-
-# Link Input (wird über die "Teilen"-Funktion übergeben)
-#url = st.text_input("YAZIO Rezept-Link hier einfügen:", placeholder="https://www.yazio.com/de/rezepte/...")
+# 4. Das Eingabefeld mit der sauberen URL füllen
+url = st.text_input("YAZIO Rezept-Link:", value=clean_url)
 
 if url:
     try:
